@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analisador de XML (NFS-e/RPS)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .drop-zone { border: 2px dashed #94a3b8; transition: all 0.3s ease; cursor: pointer; }
+        .drop-zone.over { border-color: #3b82f6; background-color: #eff6ff; }
+        .issue-card { border-left: 4px solid #ef4444; background-color: #fef2f2; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen font-sans text-gray-900">
+
+    <div class="max-w-5xl mx-auto py-12 px-6">
+        <header class="text-center mb-10">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Analisador de XML (NFS-e/RPS)</h1>
+        </header>
+
+        <div id="dropZone" class="bg-white text-center shadow-md drop-zone rounded-lg p-8 max-w-2xl mx-auto">
+            <div class="flex flex-col items-center">
+                <svg class="w-10 h-10 text-blue-500 mb-3" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+                </svg>
+                <p class="text-lg font-medium text-gray-700">Selecione ou arraste o XML aqui</p>
+                <input type="file" id="fileInput" class="hidden" accept=".xml">
+            </div>
+        </div>
+
+        <div id="resultsArea" class="hidden max-w-4xl mx-auto mt-12">
+            <div class="bg-white rounded border border-gray-200 shadow-sm p-6">
+                <div id="tabContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput'), dropZone = document.getElementById('dropZone'), resultsArea = document.getElementById('resultsArea');
+        const tabContent = document.getElementById('tabContent');
+        let xmlDataStore = {};
+
+        const tagsAuditoria = [
+            'InscricaoMunicipal', 'RegimeEspecialTributacao', 'NaturezaOperacao', 'OptanteSimplesNacional',
+            'ItemListaServico', 'CodigoTributacaoMunicipio', 'CodigoCnae', 'Discriminacao', 'IssRetido', 'CodigoNbs',
+            'DescontoIncondicionado', 'DescontoCondicionado', 'CodigoMunicipio', 'MunicipioIncidenciaSiafi',
+            'CodigoMunicipioSiafi', 'Endereço', 'Bairro', 'Numero', 'AliquotaPIS', 'AliquotaCOFINS',
+            'AliquotaINSS', 'RetidoPIS', 'RetidoCofins'
+        ];
+
+        dropZone.onclick = () => fileInput.click();
+        dropZone.ondrop = (e) => { e.preventDefault(); processFile(e.dataTransfer.files[0]); };
+        dropZone.ondragover = (e) => e.preventDefault();
+        fileInput.onchange = (e) => processFile(e.target.files[0]);
+
+        function renderAnalise() {
+            let html = `
+                <div class="flex items-center justify-between mb-8 pb-6 border-b border-gray-100">
+                    <h3 class="text-sm font-bold text-gray-500 uppercase">Análise dos dados das tags</h3>
+                    <div class="text-right">
+                        <p class="text-[10px] font-bold text-gray-400 uppercase">Pendências</p>
+                        <p id="totalErros" class="text-4xl font-bold text-red-600">0</p>
+                    </div>
+                </div>`;
+            
+            let totalErros = 0;
+            
+            tagsAuditoria.forEach(tagName => {
+                const valor = xmlDataStore[tagName];
+                const estaVazia = valor === undefined || valor.trim() === '';
+                if (estaVazia) {
+                    totalErros++;
+                    html += `<div class="issue-card p-3 mb-2 text-sm">
+                                <span class="font-bold">Tag &lt;${tagName}&gt;:</span> 
+                                <span class="italic text-red-600">Não localizada no XML ou campo vazio.</span>
+                             </div>`;
+                } else {
+                    html += `<div class="p-3 mb-2 text-sm bg-green-50 border border-green-100 rounded text-green-700">
+                                <span class="font-bold">Tag &lt;${tagName}&gt;:</span> ${valor}
+                             </div>`;
+                }
+            });
+
+            tabContent.innerHTML = html;
+            document.getElementById('totalErros').textContent = totalErros;
+        }
+
+        function processFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const parser = new DOMParser();
+                let doc = parser.parseFromString(e.target.result, "text/xml");
+                const rawData = doc.getElementsByTagName("rawData")[0] || doc.getElementsByTagName("tem:rawData")[0];
+                if (rawData) {
+                    const innerXml = rawData.textContent.replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+                    doc = parser.parseFromString(innerXml, "text/xml");
+                }
+                xmlDataStore = {};
+                Array.from(doc.getElementsByTagName("*")).forEach(el => {
+                    if (el.children.length === 0) {
+                        const name = el.tagName.split(':').pop(); 
+                        xmlDataStore[name] = el.textContent.trim();
+                    }
+                });
+                resultsArea.classList.remove('hidden');
+                renderAnalise();
+            };
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>
